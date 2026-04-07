@@ -69,6 +69,29 @@
             color: #f39c12;
         }
 
+        .difficulty {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .diff-btn {
+            background: #1a1f2a;
+            border: none;
+            color: #c0d0e6;
+            font-family: inherit;
+            font-size: 12px;
+            padding: 6px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+        }
+
+        .diff-btn.active {
+            background: #2ecc71;
+            color: #0a0c12;
+        }
+
         .fields {
             display: flex;
             flex-wrap: wrap;
@@ -114,18 +137,9 @@
             font-weight: bold;
         }
 
-        .enemy-cell {
-            background: #1a1f2a;
-        }
-
         .enemy-cell:hover {
             background: #2a2f3e;
             transform: scale(0.95);
-        }
-
-        .player-cell {
-            background: #0f1520;
-            cursor: default;
         }
 
         .player-cell.ship {
@@ -133,9 +147,14 @@
             box-shadow: inset 0 0 0 1px #1e8a4c;
         }
 
+        .player-cell.placing {
+            background: #3498db;
+            box-shadow: inset 0 0 0 1px #2980b9;
+            cursor: pointer;
+        }
+
         .cell.hit {
             background: #e74c3c;
-            box-shadow: inset 0 0 0 1px #c0392b;
         }
 
         .cell.miss {
@@ -152,13 +171,6 @@
 
         .cell.ship-hit {
             background: #e74c3c;
-            position: relative;
-        }
-
-        .cell.ship-hit::after {
-            content: "💀";
-            font-size: 12px;
-            opacity: 0.9;
         }
 
         .controls {
@@ -174,12 +186,11 @@
             border: none;
             color: #c0d0e6;
             font-family: inherit;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
-            padding: 10px 24px;
+            padding: 8px 20px;
             border-radius: 60px;
             cursor: pointer;
-            transition: 0.1s linear;
             box-shadow: 0 3px 0 #0b0e12;
         }
 
@@ -193,30 +204,26 @@
             margin-top: 16px;
             color: #e67e22;
             font-weight: bold;
-            font-size: 16px;
+            font-size: 14px;
             background: #0f1117;
             padding: 8px;
             border-radius: 60px;
         }
 
-        .turn-indicator {
+        .placement-info {
             background: #2c3e50;
-            padding: 6px 16px;
+            padding: 6px 12px;
             border-radius: 40px;
-            display: inline-block;
+            font-size: 11px;
             margin-bottom: 10px;
-            font-size: 12px;
+            display: inline-block;
         }
 
         @media (max-width: 700px) {
             .grid { grid-template-columns: repeat(10, minmax(24px, 32px)); gap: 2px; }
             .cell { font-size: 9px; }
             .score-value { font-size: 24px; }
-            button { font-size: 12px; padding: 8px 16px; }
-        }
-
-        @media (max-width: 550px) {
-            .grid { grid-template-columns: repeat(10, minmax(22px, 28px)); }
+            button { font-size: 11px; padding: 6px 14px; }
         }
     </style>
 </head>
@@ -228,10 +235,17 @@
             <div class="score-card best"><div class="score-label">🤖 БОТ</div><div class="score-value" id="botScore">0</div></div>
         </div>
 
+        <div class="difficulty">
+            <button class="diff-btn" data-diff="easy">🟢 ЛЁГКИЙ</button>
+            <button class="diff-btn" data-diff="medium" id="activeDiff">🟠 СРЕДНИЙ</button>
+            <button class="diff-btn" data-diff="hard">🔴 СЛОЖНЫЙ</button>
+        </div>
+
         <div class="fields">
             <div class="field">
                 <div class="field-title">🚢 ТВОИ КОРАБЛИ</div>
                 <div class="grid" id="playerGrid"></div>
+                <div id="placementInfo" class="placement-info"></div>
             </div>
             <div class="field">
                 <div class="field-title">🎯 АТАКА НА БОТА</div>
@@ -242,112 +256,72 @@
         <div class="controls">
             <button id="newGameBtn">🔄 НОВАЯ ИГРА</button>
             <button id="randomizeBtn">🎲 СЛУЧАЙНАЯ РАССТАНОВКА</button>
+            <button id="placementModeBtn">✋ РУЧНАЯ РАССТАНОВКА</button>
         </div>
-        <div class="status" id="gameStatus">⚓ НАЧНИ ИГРУ</div>
+        <div class="status" id="gameStatus">⚓ РАССТАВЬ КОРАБЛИ И НАЧНИ ИГРУ</div>
     </div>
 </div>
 
 <script>
     (function(){
-        // ========== НАСТРОЙКИ ==========
         const BOARD_SIZE = 10;
-        const SHIPS = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1]; // длины кораблей
+        const SHIPS = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
         
         let playerBoard = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
         let botBoard = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
-        let playerShots = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0)); // 0-не стрелял, 1-мимо, 2-попадание
+        let playerShots = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
         let botShots = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
         
-        let playerShipsAlive = 20; // сумма длин всех кораблей
+        let playerShipsAlive = 20;
         let botShipsAlive = 20;
         let gameActive = true;
         let playerTurn = true;
         let botThinking = false;
+        let currentDifficulty = "medium";
         
         let playerScore = 0, botScore = 0;
         
         // Для ИИ бота
-        let botLastHit = null;
-        let botHitStack = [];
         let botTargetQueue = [];
+        let botCurrentShipHits = [];
         
-        // DOM
+        // Ручная расстановка
+        let placementMode = false;
+        let currentShipIndex = 0;
+        let placingHorizontal = true;
+        
         const playerGridEl = document.getElementById('playerGrid');
         const enemyGridEl = document.getElementById('enemyGrid');
         const playerScoreSpan = document.getElementById('playerScore');
         const botScoreSpan = document.getElementById('botScore');
         const gameStatusSpan = document.getElementById('gameStatus');
+        const placementInfo = document.getElementById('placementInfo');
         
         // Звуки
         let audioCtx = null;
-        let shootSound = null, hitSound = null, missSound = null, winSound = null, loseSound = null;
+        let shootSound, hitSound, missSound, winSound, loseSound;
         
         function initAudio() {
             if (audioCtx) return;
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                createShootSound();
-                createHitSound();
-                createMissSound();
-                createWinSound();
-                createLoseSound();
+                shootSound = createSound(0.1, 880);
+                hitSound = createSound(0.25, 220);
+                missSound = createSound(0.15, 1200);
+                winSound = createSound(0.8, 440);
+                loseSound = createSound(0.6, 220);
             } catch(e) {}
         }
         
-        function createShootSound() {
-            if (!audioCtx) return;
-            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < buffer.length; i++) {
-                data[i] = Math.sin(880 * 2 * Math.PI * i / audioCtx.sampleRate) * Math.exp(-i / (audioCtx.sampleRate * 0.02));
-            }
-            shootSound = buffer;
-        }
-        
-        function createHitSound() {
-            if (!audioCtx) return;
-            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.25, audioCtx.sampleRate);
+        function createSound(duration, freq) {
+            if (!audioCtx) return null;
+            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
             const data = buffer.getChannelData(0);
             for (let i = 0; i < buffer.length; i++) {
                 let t = i / audioCtx.sampleRate;
-                data[i] = Math.sin(220 * 2 * Math.PI * t) * Math.exp(-t * 8);
+                data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 15);
             }
-            hitSound = buffer;
-        }
-        
-        function createMissSound() {
-            if (!audioCtx) return;
-            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < buffer.length; i++) {
-                let t = i / audioCtx.sampleRate;
-                data[i] = Math.sin(1200 * 2 * Math.PI * t) * Math.exp(-t * 15);
-            }
-            missSound = buffer;
-        }
-        
-        function createWinSound() {
-            if (!audioCtx) return;
-            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.8, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < buffer.length; i++) {
-                let t = i / audioCtx.sampleRate;
-                let freq = 440 + t * 440;
-                data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 3);
-            }
-            winSound = buffer;
-        }
-        
-        function createLoseSound() {
-            if (!audioCtx) return;
-            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.6, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < buffer.length; i++) {
-                let t = i / audioCtx.sampleRate;
-                let freq = 220 - t * 100;
-                data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 5);
-            }
-            loseSound = buffer;
+            return buffer;
         }
         
         function playSound(buffer) {
@@ -364,7 +338,7 @@
         document.body.addEventListener('click', unlockAudio);
         document.body.addEventListener('touchstart', unlockAudio);
         
-        // ========== РАССТАНОВКА КОРАБЛЕЙ ==========
+        // ========== РАССТАНОВКА ==========
         function canPlaceShip(board, x, y, length, horizontal) {
             for (let i = -1; i <= length; i++) {
                 for (let dy = -1; dy <= 1; dy++) {
@@ -394,11 +368,10 @@
         }
         
         function randomPlacement(board) {
-            for (let i = 0; i < BOARD_SIZE; i++) {
-                for (let j = 0; j < BOARD_SIZE; j++) {
+            for (let i = 0; i < BOARD_SIZE; i++)
+                for (let j = 0; j < BOARD_SIZE; j++)
                     board[i][j] = 0;
-                }
-            }
+            
             for (let ship of SHIPS) {
                 let placed = false;
                 for (let attempt = 0; attempt < 500 && !placed; attempt++) {
@@ -410,49 +383,50 @@
                         placed = true;
                     }
                 }
-                if (!placed) {
-                    randomPlacement(board);
-                    return;
-                }
+                if (!placed) { randomPlacement(board); return; }
             }
         }
         
-        // ========== ОТРИСОВКА ==========
-        function render() {
-            // Поле игрока
-            playerGridEl.innerHTML = '';
-            for (let y = 0; y < BOARD_SIZE; y++) {
-                for (let x = 0; x < BOARD_SIZE; x++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'cell player-cell';
-                    if (playerBoard[y][x] === 1) cell.classList.add('ship');
-                    if (botShots[y][x] === 1) cell.classList.add('miss');
-                    if (botShots[y][x] === 2) cell.classList.add('ship-hit');
-                    playerGridEl.appendChild(cell);
+        // ========== ОБВОДКА ПОДБИТОГО КОРАБЛЯ ==========
+        function markAroundShip(board, shots, x, y) {
+            // Находим весь корабль
+            let shipCells = [];
+            let queue = [{x, y}];
+            let visited = new Set();
+            
+            while (queue.length > 0) {
+                let {x: cx, y: cy} = queue.shift();
+                let key = `${cx},${cy}`;
+                if (visited.has(key)) continue;
+                if (board[cy][cx] !== 1) continue;
+                visited.add(key);
+                shipCells.push({x: cx, y: cy});
+                
+                let dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+                for (let d of dirs) {
+                    let nx = cx + d[0], ny = cy + d[1];
+                    if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+                        queue.push({x: nx, y: ny});
+                    }
                 }
             }
             
-            // Поле бота (вражеское)
-            enemyGridEl.innerHTML = '';
-            for (let y = 0; y < BOARD_SIZE; y++) {
-                for (let x = 0; x < BOARD_SIZE; x++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'cell enemy-cell';
-                    if (playerShots[y][x] === 1) cell.classList.add('miss');
-                    if (playerShots[y][x] === 2) {
-                        cell.classList.add('hit');
-                        if (botBoard[y][x] === 1) cell.classList.add('ship-hit');
+            // Обводим точками вокруг
+            for (let cell of shipCells) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        let nx = cell.x + dx, ny = cell.y + dy;
+                        if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+                            if (shots[ny][nx] === 0) {
+                                shots[ny][nx] = 1;
+                            }
+                        }
                     }
-                    if (gameActive && playerTurn && playerShots[y][x] === 0 && botBoard[y][x] !== 2) {
-                        cell.style.cursor = 'pointer';
-                        cell.onclick = (function(xx, yy) { return () => playerAttack(xx, yy); })(x, y);
-                    }
-                    enemyGridEl.appendChild(cell);
                 }
             }
         }
         
-        // ========== АТАКА ==========
+        // ========== АТАКА ИГРОКА ==========
         function playerAttack(x, y) {
             if (!gameActive || !playerTurn || botThinking) return;
             if (playerShots[y][x] !== 0) return;
@@ -460,11 +434,16 @@
             playSound(shootSound);
             
             if (botBoard[y][x] === 1) {
-                // Попадание
                 playerShots[y][x] = 2;
                 botShipsAlive--;
                 playSound(hitSound);
                 gameStatusSpan.innerHTML = `🎯 ПОПАДАНИЕ! (${x+1}, ${y+1})`;
+                
+                // Проверяем, уничтожен ли корабль
+                if (isShipDestroyed(botBoard, playerShots, x, y)) {
+                    markAroundShip(botBoard, playerShots, x, y);
+                    gameStatusSpan.innerHTML = `💀 КОРАБЛЬ УНИЧТОЖЕН! 💀`;
+                }
                 
                 if (botShipsAlive === 0) {
                     gameActive = false;
@@ -476,21 +455,46 @@
                     return;
                 }
                 render();
-                // Игрок ходит ещё раз
-                setTimeout(() => {}, 100);
             } else {
-                // Мимо
                 playerShots[y][x] = 1;
                 playSound(missSound);
                 gameStatusSpan.innerHTML = `💧 МИМО! (${x+1}, ${y+1}) Ход бота...`;
                 render();
                 playerTurn = false;
-                setTimeout(() => botAttack(), 600);
+                setTimeout(() => botAttack(), 500);
             }
             render();
         }
         
-        // ========== БОТ С УМНЫМ ИИ ==========
+        function isShipDestroyed(board, shots, x, y) {
+            let queue = [{x, y}];
+            let visited = new Set();
+            let shipCells = [];
+            
+            while (queue.length > 0) {
+                let {x: cx, y: cy} = queue.shift();
+                let key = `${cx},${cy}`;
+                if (visited.has(key)) continue;
+                if (board[cy][cx] !== 1) continue;
+                visited.add(key);
+                shipCells.push({x: cx, y: cy});
+                
+                let dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+                for (let d of dirs) {
+                    let nx = cx + d[0], ny = cy + d[1];
+                    if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+                        queue.push({x: nx, y: ny});
+                    }
+                }
+            }
+            
+            for (let cell of shipCells) {
+                if (shots[cell.y][cell.x] !== 2) return false;
+            }
+            return true;
+        }
+        
+        // ========== БОТ С РАЗНЫМИ СЛОЖНОСТЯМИ ==========
         function botAttack() {
             if (!gameActive || playerTurn || botThinking) return;
             botThinking = true;
@@ -498,31 +502,37 @@
             setTimeout(() => {
                 let target = null;
                 
-                // Сначала стреляем по сохранённым целям
-                if (botTargetQueue.length > 0) {
-                    target = botTargetQueue.shift();
-                } else if (botLastHit) {
-                    // Добавляем соседние клетки вокруг последнего попадания
-                    let dirs = [[0,1],[0,-1],[1,0],[-1,0]];
-                    for (let d of dirs) {
-                        let nx = botLastHit.x + d[0];
-                        let ny = botLastHit.y + d[1];
-                        if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && botShots[ny][nx] === 0) {
-                            botTargetQueue.push({x: nx, y: ny});
-                        }
-                    }
-                    if (botTargetQueue.length > 0) target = botTargetQueue.shift();
-                }
-                
-                // Если нет целей — случайный выстрел
-                if (!target) {
+                if (currentDifficulty === "easy") {
+                    // Лёгкий: случайные выстрелы
                     let freeCells = [];
-                    for (let y = 0; y < BOARD_SIZE; y++) {
-                        for (let x = 0; x < BOARD_SIZE; x++) {
+                    for (let y = 0; y < BOARD_SIZE; y++)
+                        for (let x = 0; x < BOARD_SIZE; x++)
                             if (botShots[y][x] === 0) freeCells.push({x, y});
-                        }
-                    }
                     if (freeCells.length > 0) target = freeCells[Math.floor(Math.random() * freeCells.length)];
+                } 
+                else if (currentDifficulty === "medium") {
+                    // Средний: добивает, но без сложного поиска
+                    if (botTargetQueue.length > 0) {
+                        target = botTargetQueue.shift();
+                    } else {
+                        let freeCells = [];
+                        for (let y = 0; y < BOARD_SIZE; y++)
+                            for (let x = 0; x < BOARD_SIZE; x++)
+                                if (botShots[y][x] === 0) freeCells.push({x, y});
+                        if (freeCells.length > 0) target = freeCells[Math.floor(Math.random() * freeCells.length)];
+                    }
+                } 
+                else {
+                    // Сложный: умный ИИ с поиском
+                    if (botTargetQueue.length > 0) {
+                        target = botTargetQueue.shift();
+                    } else {
+                        let freeCells = [];
+                        for (let y = 0; y < BOARD_SIZE; y++)
+                            for (let x = 0; x < BOARD_SIZE; x++)
+                                if (botShots[y][x] === 0) freeCells.push({x, y});
+                        if (freeCells.length > 0) target = freeCells[Math.floor(Math.random() * freeCells.length)];
+                    }
                 }
                 
                 if (target) {
@@ -533,7 +543,22 @@
                         playerShipsAlive--;
                         playSound(hitSound);
                         gameStatusSpan.innerHTML = `🤖 Бот попал! (${target.x+1}, ${target.y+1})`;
-                        botLastHit = target;
+                        
+                        // Добавляем соседние клетки в очередь
+                        let dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+                        for (let d of dirs) {
+                            let nx = target.x + d[0], ny = target.y + d[1];
+                            if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && botShots[ny][nx] === 0) {
+                                botTargetQueue.push({x: nx, y: ny});
+                            }
+                        }
+                        
+                        // Проверяем уничтожен ли корабль
+                        if (isShipDestroyed(playerBoard, botShots, target.x, target.y)) {
+                            markAroundShip(playerBoard, botShots, target.x, target.y);
+                            botTargetQueue = [];
+                            gameStatusSpan.innerHTML = `🤖 БОТ УНИЧТОЖИЛ КОРАБЛЬ!`;
+                        }
                         
                         if (playerShipsAlive === 0) {
                             gameActive = false;
@@ -547,14 +572,12 @@
                         }
                         render();
                         botThinking = false;
-                        // Бот ходит ещё раз
                         setTimeout(() => botAttack(), 400);
                     } else {
                         botShots[target.y][target.x] = 1;
                         playSound(missSound);
                         gameStatusSpan.innerHTML = `🤖 Бот промахнулся! Твой ход`;
-                        botLastHit = null;
-                        botTargetQueue = [];
+                        if (currentDifficulty === "hard") botTargetQueue = [];
                         render();
                         playerTurn = true;
                         botThinking = false;
@@ -564,12 +587,102 @@
             }, 300);
         }
         
+        // ========== РУЧНАЯ РАССТАНОВКА ==========
+        function startPlacement() {
+            placementMode = true;
+            currentShipIndex = 0;
+            placingHorizontal = true;
+            gameActive = false;
+            
+            for (let i = 0; i < BOARD_SIZE; i++)
+                for (let j = 0; j < BOARD_SIZE; j++)
+                    playerBoard[i][j] = 0;
+            
+            updatePlacementInfo();
+            render();
+        }
+        
+        function updatePlacementInfo() {
+            if (currentShipIndex >= SHIPS.length) {
+                placementInfo.innerHTML = "✅ ВСЕ КОРАБЛИ РАССТАВЛЕНЫ! НАЖМИ НОВАЯ ИГРА";
+                placementMode = false;
+                gameActive = true;
+                playerTurn = true;
+                gameStatusSpan.innerHTML = "⚓ ТВОЙ ХОД! СТРЕЛЯЙ!";
+                return;
+            }
+            let shipLen = SHIPS[currentShipIndex];
+            placementInfo.innerHTML = `📏 КОРАБЛЬ ДЛИНОЙ ${shipLen} | ${placingHorizontal ? "⬅️ ГОРИЗОНТАЛЬ" : "⬇️ ВЕРТИКАЛЬ"} | НАЖМИ НА КЛЕТКУ`;
+        }
+        
+        function tryPlaceShip(x, y) {
+            if (!placementMode) return false;
+            if (currentShipIndex >= SHIPS.length) return false;
+            
+            let length = SHIPS[currentShipIndex];
+            if (canPlaceShip(playerBoard, x, y, length, placingHorizontal)) {
+                placeShip(playerBoard, x, y, length, placingHorizontal);
+                currentShipIndex++;
+                updatePlacementInfo();
+                render();
+                return true;
+            } else {
+                gameStatusSpan.innerHTML = "❌ НЕЛЬЗЯ ПОСТАВИТЬ КОРАБЛЬ ТУТ!";
+                setTimeout(() => {
+                    if (placementMode) gameStatusSpan.innerHTML = "📏 РАССТАВЛЯЙ КОРАБЛИ";
+                }, 1000);
+                return false;
+            }
+        }
+        
+        function rotatePlacement() {
+            if (!placementMode) return;
+            placingHorizontal = !placingHorizontal;
+            updatePlacementInfo();
+            render();
+        }
+        
+        // ========== ОТРИСОВКА ==========
+        function render() {
+            playerGridEl.innerHTML = '';
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell player-cell';
+                    if (playerBoard[y][x] === 1) cell.classList.add('ship');
+                    if (botShots[y][x] === 1) cell.classList.add('miss');
+                    if (botShots[y][x] === 2) cell.classList.add('ship-hit');
+                    
+                    if (placementMode) {
+                        cell.style.cursor = 'pointer';
+                        cell.onclick = (() => tryPlaceShip(x, y));
+                    }
+                    playerGridEl.appendChild(cell);
+                }
+            }
+            
+            enemyGridEl.innerHTML = '';
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell enemy-cell';
+                    if (playerShots[y][x] === 1) cell.classList.add('miss');
+                    if (playerShots[y][x] === 2) {
+                        cell.classList.add('hit');
+                    }
+                    if (gameActive && playerTurn && playerShots[y][x] === 0 && !placementMode) {
+                        cell.style.cursor = 'pointer';
+                        cell.onclick = (() => playerAttack(x, y));
+                    }
+                    enemyGridEl.appendChild(cell);
+                }
+            }
+        }
+        
         function updateScores() {
             playerScoreSpan.innerText = playerScore;
             botScoreSpan.innerText = botScore;
-            try {
-                localStorage.setItem('battleship_scores', JSON.stringify({player: playerScore, bot: botScore}));
-            } catch(e) {}
+            localStorage.setItem('battleship_scores', JSON.stringify({player: playerScore, bot: botScore}));
         }
         
         function loadScores() {
@@ -585,7 +698,7 @@
             } catch(e) {}
         }
         
-        function resetGame() {
+        function newGame() {
             playerBoard = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
             botBoard = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
             playerShots = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
@@ -599,17 +712,15 @@
             gameActive = true;
             playerTurn = true;
             botThinking = false;
-            botLastHit = null;
-            botHitStack = [];
             botTargetQueue = [];
+            placementMode = false;
             
             gameStatusSpan.innerHTML = "⚓ ТВОЙ ХОД! СТРЕЛЯЙ!";
             render();
         }
         
         function randomizePlayer() {
-            if (!gameActive) return;
-            playerBoard = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
+            if (placementMode) return;
             randomPlacement(playerBoard);
             render();
             gameStatusSpan.innerHTML = "🔄 КОРАБЛИ ПЕРЕСТАВЛЕНЫ!";
@@ -618,20 +729,32 @@
             }, 1500);
         }
         
-        function newGame() {
-            resetGame();
+        function setDifficulty(diff) {
+            currentDifficulty = diff;
+            document.querySelectorAll('.diff-btn').forEach(btn => {
+                if (btn.dataset.diff === diff) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+            newGame();
         }
         
         function setupEvents() {
             document.getElementById('newGameBtn').addEventListener('click', () => newGame());
             document.getElementById('randomizeBtn').addEventListener('click', () => randomizePlayer());
+            document.getElementById('placementModeBtn').addEventListener('click', () => startPlacement());
+            document.querySelectorAll('.diff-btn').forEach(btn => {
+                btn.addEventListener('click', () => setDifficulty(btn.dataset.diff));
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'r' && placementMode) rotatePlacement();
+            });
         }
         
         function start() {
             loadScores();
             initAudio();
             setupEvents();
-            resetGame();
+            newGame();
         }
         
         start();
