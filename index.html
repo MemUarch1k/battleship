@@ -74,6 +74,7 @@
             gap: 10px;
             justify-content: center;
             margin-bottom: 15px;
+            flex-wrap: wrap;
         }
 
         .diff-btn {
@@ -215,8 +216,18 @@
             padding: 6px 12px;
             border-radius: 40px;
             font-size: 11px;
-            margin-bottom: 10px;
+            margin-top: 10px;
             display: inline-block;
+        }
+
+        .controls-hint {
+            background: #1a1f2a;
+            padding: 6px 12px;
+            border-radius: 40px;
+            font-size: 10px;
+            color: #5a6e8a;
+            margin-top: 10px;
+            text-align: center;
         }
 
         @media (max-width: 700px) {
@@ -258,6 +269,7 @@
             <button id="randomizeBtn">🎲 СЛУЧАЙНАЯ РАССТАНОВКА</button>
             <button id="placementModeBtn">✋ РУЧНАЯ РАССТАНОВКА</button>
         </div>
+        <div class="controls-hint" id="controlsHint"></div>
         <div class="status" id="gameStatus">⚓ РАССТАВЬ КОРАБЛИ И НАЧНИ ИГРУ</div>
     </div>
 </div>
@@ -281,11 +293,8 @@
         
         let playerScore = 0, botScore = 0;
         
-        // Для ИИ бота
         let botTargetQueue = [];
-        let botCurrentShipHits = [];
         
-        // Ручная расстановка
         let placementMode = false;
         let currentShipIndex = 0;
         let placingHorizontal = true;
@@ -296,6 +305,7 @@
         const botScoreSpan = document.getElementById('botScore');
         const gameStatusSpan = document.getElementById('gameStatus');
         const placementInfo = document.getElementById('placementInfo');
+        const controlsHint = document.getElementById('controlsHint');
         
         // Звуки
         let audioCtx = null;
@@ -338,7 +348,6 @@
         document.body.addEventListener('click', unlockAudio);
         document.body.addEventListener('touchstart', unlockAudio);
         
-        // ========== РАССТАНОВКА ==========
         function canPlaceShip(board, x, y, length, horizontal) {
             for (let i = -1; i <= length; i++) {
                 for (let dy = -1; dy <= 1; dy++) {
@@ -387,9 +396,7 @@
             }
         }
         
-        // ========== ОБВОДКА ПОДБИТОГО КОРАБЛЯ ==========
         function markAroundShip(board, shots, x, y) {
-            // Находим весь корабль
             let shipCells = [];
             let queue = [{x, y}];
             let visited = new Set();
@@ -411,7 +418,6 @@
                 }
             }
             
-            // Обводим точками вокруг
             for (let cell of shipCells) {
                 for (let dy = -1; dy <= 1; dy++) {
                     for (let dx = -1; dx <= 1; dx++) {
@@ -426,7 +432,6 @@
             }
         }
         
-        // ========== АТАКА ИГРОКА ==========
         function playerAttack(x, y) {
             if (!gameActive || !playerTurn || botThinking) return;
             if (playerShots[y][x] !== 0) return;
@@ -439,7 +444,6 @@
                 playSound(hitSound);
                 gameStatusSpan.innerHTML = `🎯 ПОПАДАНИЕ! (${x+1}, ${y+1})`;
                 
-                // Проверяем, уничтожен ли корабль
                 if (isShipDestroyed(botBoard, playerShots, x, y)) {
                     markAroundShip(botBoard, playerShots, x, y);
                     gameStatusSpan.innerHTML = `💀 КОРАБЛЬ УНИЧТОЖЕН! 💀`;
@@ -494,7 +498,6 @@
             return true;
         }
         
-        // ========== БОТ С РАЗНЫМИ СЛОЖНОСТЯМИ ==========
         function botAttack() {
             if (!gameActive || playerTurn || botThinking) return;
             botThinking = true;
@@ -503,7 +506,6 @@
                 let target = null;
                 
                 if (currentDifficulty === "easy") {
-                    // Лёгкий: случайные выстрелы
                     let freeCells = [];
                     for (let y = 0; y < BOARD_SIZE; y++)
                         for (let x = 0; x < BOARD_SIZE; x++)
@@ -511,7 +513,6 @@
                     if (freeCells.length > 0) target = freeCells[Math.floor(Math.random() * freeCells.length)];
                 } 
                 else if (currentDifficulty === "medium") {
-                    // Средний: добивает, но без сложного поиска
                     if (botTargetQueue.length > 0) {
                         target = botTargetQueue.shift();
                     } else {
@@ -523,7 +524,6 @@
                     }
                 } 
                 else {
-                    // Сложный: умный ИИ с поиском
                     if (botTargetQueue.length > 0) {
                         target = botTargetQueue.shift();
                     } else {
@@ -544,7 +544,6 @@
                         playSound(hitSound);
                         gameStatusSpan.innerHTML = `🤖 Бот попал! (${target.x+1}, ${target.y+1})`;
                         
-                        // Добавляем соседние клетки в очередь
                         let dirs = [[0,1],[0,-1],[1,0],[-1,0]];
                         for (let d of dirs) {
                             let nx = target.x + d[0], ny = target.y + d[1];
@@ -553,7 +552,6 @@
                             }
                         }
                         
-                        // Проверяем уничтожен ли корабль
                         if (isShipDestroyed(playerBoard, botShots, target.x, target.y)) {
                             markAroundShip(playerBoard, botShots, target.x, target.y);
                             botTargetQueue = [];
@@ -587,17 +585,18 @@
             }, 300);
         }
         
-        // ========== РУЧНАЯ РАССТАНОВКА ==========
         function startPlacement() {
             placementMode = true;
             currentShipIndex = 0;
             placingHorizontal = true;
             gameActive = false;
+            playerTurn = true;
             
             for (let i = 0; i < BOARD_SIZE; i++)
                 for (let j = 0; j < BOARD_SIZE; j++)
                     playerBoard[i][j] = 0;
             
+            controlsHint.innerHTML = "⌨️ КЛАВИША R — ПОВЕРНУТЬ КОРАБЛЬ | 🖱️ КЛИК — ПОСТАВИТЬ";
             updatePlacementInfo();
             render();
         }
@@ -605,14 +604,17 @@
         function updatePlacementInfo() {
             if (currentShipIndex >= SHIPS.length) {
                 placementInfo.innerHTML = "✅ ВСЕ КОРАБЛИ РАССТАВЛЕНЫ! НАЖМИ НОВАЯ ИГРА";
+                controlsHint.innerHTML = "🎯 КЛИКАЙ ПО ПОЛЮ БОТА, ЧТОБЫ СТРЕЛЯТЬ";
                 placementMode = false;
                 gameActive = true;
                 playerTurn = true;
                 gameStatusSpan.innerHTML = "⚓ ТВОЙ ХОД! СТРЕЛЯЙ!";
+                render();
                 return;
             }
             let shipLen = SHIPS[currentShipIndex];
-            placementInfo.innerHTML = `📏 КОРАБЛЬ ДЛИНОЙ ${shipLen} | ${placingHorizontal ? "⬅️ ГОРИЗОНТАЛЬ" : "⬇️ ВЕРТИКАЛЬ"} | НАЖМИ НА КЛЕТКУ`;
+            let dirText = placingHorizontal ? "⬅️ ГОРИЗОНТАЛЬ" : "⬇️ ВЕРТИКАЛЬ";
+            placementInfo.innerHTML = `📏 КОРАБЛЬ ДЛИНОЙ ${shipLen} | ${dirText} | НАЖМИ НА КЛЕТКУ (R - ПОВОРОТ)`;
         }
         
         function tryPlaceShip(x, y) {
@@ -640,9 +642,12 @@
             placingHorizontal = !placingHorizontal;
             updatePlacementInfo();
             render();
+            gameStatusSpan.innerHTML = `🔄 ПОВОРОТ: ${placingHorizontal ? "ГОРИЗОНТАЛЬ" : "ВЕРТИКАЛЬ"}`;
+            setTimeout(() => {
+                if (placementMode) gameStatusSpan.innerHTML = "📏 РАССТАВЛЯЙ КОРАБЛИ";
+            }, 800);
         }
         
-        // ========== ОТРИСОВКА ==========
         function render() {
             playerGridEl.innerHTML = '';
             for (let y = 0; y < BOARD_SIZE; y++) {
@@ -715,6 +720,7 @@
             botTargetQueue = [];
             placementMode = false;
             
+            controlsHint.innerHTML = "🎯 КЛИКАЙ ПО ПОЛЮ БОТА, ЧТОБЫ СТРЕЛЯТЬ";
             gameStatusSpan.innerHTML = "⚓ ТВОЙ ХОД! СТРЕЛЯЙ!";
             render();
         }
@@ -745,8 +751,12 @@
             document.querySelectorAll('.diff-btn').forEach(btn => {
                 btn.addEventListener('click', () => setDifficulty(btn.dataset.diff));
             });
+            
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'r' && placementMode) rotatePlacement();
+                if (e.key === 'r' || e.key === 'R') {
+                    e.preventDefault();
+                    rotatePlacement();
+                }
             });
         }
         
