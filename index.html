@@ -194,6 +194,11 @@
             box-shadow: 0 1px 0 #0b0e12;
         }
 
+        .rotate-btn {
+            background: #e67e22;
+            color: #0a0c12;
+        }
+
         .status {
             text-align: center;
             margin-top: 16px;
@@ -262,6 +267,7 @@
             <button id="newGameBtn">🔄 НОВАЯ ИГРА</button>
             <button id="randomizeBtn">🎲 СЛУЧАЙНАЯ РАССТАНОВКА</button>
             <button id="placementModeBtn">✋ РУЧНАЯ РАССТАНОВКА</button>
+            <button id="rotateBtn" class="rotate-btn">🔄 ПОВЕРНУТЬ</button>
         </div>
         <div class="controls-hint" id="controlsHint"></div>
         <div class="status" id="gameStatus">⚓ РАССТАВЬ КОРАБЛИ И НАЧНИ ИГРУ</div>
@@ -300,6 +306,7 @@
         const gameStatusSpan = document.getElementById('gameStatus');
         const placementInfo = document.getElementById('placementInfo');
         const controlsHint = document.getElementById('controlsHint');
+        const rotateBtn = document.getElementById('rotateBtn');
         
         // Звуки (тихие)
         let audioCtx = null;
@@ -323,7 +330,6 @@
             const data = buffer.getChannelData(0);
             for (let i = 0; i < buffer.length; i++) {
                 let t = i / audioCtx.sampleRate;
-                // Тихие звуки (громкость 0.2 вместо 0.8)
                 data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 15) * 0.2;
             }
             return buffer;
@@ -591,7 +597,7 @@
                 for (let j = 0; j < BOARD_SIZE; j++)
                     playerBoard[i][j] = 0;
             
-            controlsHint.innerHTML = "🖱️ ЛКМ — ПОСТАВИТЬ | 🔄 ПКМ — ПОВЕРНУТЬ КОРАБЛЬ";
+            controlsHint.innerHTML = "🖱️ ЛКМ/ТАП — ПОСТАВИТЬ | 🔄 КНОПКА ПОВЕРНУТЬ";
             updatePlacementInfo();
             render();
         }
@@ -609,7 +615,7 @@
             }
             let shipLen = SHIPS[currentShipIndex];
             let dirText = placingHorizontal ? "⬅️ ГОРИЗОНТАЛЬ" : "⬇️ ВЕРТИКАЛЬ";
-            placementInfo.innerHTML = `📏 КОРАБЛЬ ДЛИНОЙ ${shipLen} | ${dirText} | ЛКМ - ПОСТАВИТЬ, ПКМ - ПОВЕРНУТЬ`;
+            placementInfo.innerHTML = `📏 КОРАБЛЬ ДЛИНОЙ ${shipLen} | ${dirText} | ТАПНИ НА КЛЕТКУ`;
         }
         
         function tryPlaceShip(x, y) {
@@ -748,6 +754,7 @@
             document.getElementById('newGameBtn').addEventListener('click', () => newGame());
             document.getElementById('randomizeBtn').addEventListener('click', () => randomizePlayer());
             document.getElementById('placementModeBtn').addEventListener('click', () => startPlacement());
+            rotateBtn.addEventListener('click', () => rotatePlacement());
             document.querySelectorAll('.diff-btn').forEach(btn => {
                 btn.addEventListener('click', () => setDifficulty(btn.dataset.diff));
             });
