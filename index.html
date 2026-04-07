@@ -301,7 +301,7 @@
         const placementInfo = document.getElementById('placementInfo');
         const controlsHint = document.getElementById('controlsHint');
         
-        // Звуки
+        // Звуки (тихие)
         let audioCtx = null;
         let shootSound, hitSound, missSound, winSound, loseSound;
         
@@ -323,7 +323,8 @@
             const data = buffer.getChannelData(0);
             for (let i = 0; i < buffer.length; i++) {
                 let t = i / audioCtx.sampleRate;
-                data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 15);
+                // Тихие звуки (громкость 0.2 вместо 0.8)
+                data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 15) * 0.2;
             }
             return buffer;
         }
